@@ -1,0 +1,32 @@
+---
+import Base from "../layouts/Base.astro";
+import { getSession, readSessionId } from "../lib/auth";
+
+const sessionId = readSessionId(Astro.request.headers.get("cookie"));
+const session = await getSession(sessionId);
+if (session) {
+  return Astro.redirect("/app");
+}
+---
+<Base title="finanzas · sopadeletras">
+  <main class="landing">
+    <div>
+      <p class="landing__eyebrow">finanzas <span class="muted">· sopadeletras</span></p>
+      <h1>Una sola fuente de verdad<br/>para las cuentas.</h1>
+      <p class="landing__lead muted">
+        Plataforma privada de administración financiera para Roberto y Lili.
+      </p>
+      <a class="btn" href="/login">entrar</a>
+    </div>
+  </main>
+  <style>
+    .landing {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: var(--sp-12) var(--sp-6); text-align: center;
+    }
+    .landing__eyebrow { font-size: var(--fs-xs); letter-spacing: 0.08em; margin-bottom: var(--sp-4); }
+    .landing h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; margin-bottom: var(--sp-4); }
+    .landing__lead { margin: 0 auto var(--sp-8); max-width: 28rem; }
+  </style>
+</Base>

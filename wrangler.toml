@@ -1,0 +1,15 @@
+name = "finanzas-sopadeletras"
+account_id = "79b48e78b9db791957b966c527f8039a"
+compatibility_date = "2026-05-11"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+routes = [
+  { pattern = "finanzas.sopadeletras.art", custom_domain = true }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "finanzas-sopadeletras"
+database_id = "90bb0f6b-7048-4e5f-9d39-1b3ae8f76a65"
+migrations_dir = "migrations"

@@ -1,0 +1,209 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listAccounts, listReceivables, listSubscriptions, listGoals, upcomingDates, summarize } from "../../lib/finance";
+import { fmtMxn, fmtDate, relativeDays } from "../../lib/format";
+
+const [accounts, receivables, subscriptions, goals] = await Promise.all([
+  listAccounts(false),
+  listReceivables(),
+  listSubscriptions(true),
+  listGoals(),
+]);
+const totals = summarize(accounts, receivables, subscriptions);
+const upcoming = upcomingDates(accounts, receivables).slice(0, 6);
+const pendingReceivables = receivables.filter(r => r.status === "pending" || r.status === "partial" || r.status === "late");
+---
+<Base title="resumen · finanzas" showNav={true}>
+  <main class="shell dashboard">
+    <header class="dashboard__head">
+      <div>
+        <p class="muted small">Hoy {new Date().toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" })}</p>
+        <h1>Resumen</h1>
+      </div>
+    </header>
+
+    <section class="kpis">
+      <div class="kpi">
+        <p class="kpi__label">Efectivo disponible</p>
+        <p class="kpi__value mono">{fmtMxn(totals.cashTotal)}</p>
+        <p class="kpi__sub muted">en cuentas de débito y efectivo</p>
+      </div>
+      <div class="kpi">
+        <p class="kpi__label">Deuda TDC</p>
+        <p class="kpi__value mono neg">{fmtMxn(totals.debtTotal)}</p>
+        <p class="kpi__sub muted">crédito disponible {fmtMxn(totals.creditAvailable)}</p>
+      </div>
+      <div class="kpi">
+        <p class="kpi__label">Pipeline</p>
+        <p class="kpi__value mono pos">{fmtMxn(totals.pipelineTotal)}</p>
+        <p class="kpi__sub muted">{totals.pipelineCount} cobros pendientes</p>
+      </div>
+      <div class="kpi">
+        <p class="kpi__label">Suscripciones</p>
+        <p class="kpi__value mono">{fmtMxn(totals.subsMonthly)}</p>
+        <p class="kpi__sub muted">{totals.subsActive} activas / mes</p>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card__head">
+          <h2>Cuentas</h2>
+          <span class="muted">{accounts.length} activas</span>
+        </div>
+        <ul class="rows">
+          {accounts.map(a => (
+            <li class="row">
+              <div>
+                <p class="row__title">{a.name}</p>
+                <p class="row__sub muted small">
+                  {a.bank ?? a.type}
+                  {a.last4 && <span> · ····{a.last4}</span>}
+                  {a.type === "credit" && a.credit_limit && (
+                    <span> · límite {fmtMxn(a.credit_limit)}</span>
+                  )}
+                </p>
+              </div>
+              <p class={`row__amt mono ${a.balance < 0 ? "neg" : ""}`}>{fmtMxn(a.balance)}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <h2>Pipeline</h2>
+          <a href="/app/pipeline" class="muted small">ver todo →</a>
+        </div>
+        {pendingReceivables.length === 0 ? (
+          <p class="muted small">Sin cobros pendientes.</p>
+        ) : (
+          <ul class="rows">
+            {pendingReceivables.slice(0, 6).map(r => (
+              <li class="row">
+                <div>
+                  <p class="row__title">{r.client}</p>
+                  <p class="row__sub muted small">
+                    {r.project ?? "—"}
+                    {r.expected_date && <span> · {fmtDate(r.expected_date)}</span>}
+                    {!r.expected_date && <span> · fecha sin confirmar</span>}
+                  </p>
+                </div>
+                <p class="row__amt mono pos">{fmtMxn(r.amount - r.paid_amount)}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <h2>Próximas fechas</h2>
+          <span class="muted">60 días</span>
+        </div>
+        {upcoming.length === 0 ? (
+          <p class="muted small">Sin fechas en el horizonte.</p>
+        ) : (
+          <ul class="rows">
+            {upcoming.map(u => (
+              <li class="row">
+                <div>
+                  <p class="row__title">{u.label}</p>
+                  <p class="row__sub muted small">{fmtDate(u.date)} · {relativeDays(u.date)}</p>
+                </div>
+                {u.amount != null && u.amount > 0 && (
+                  <p class={`row__amt mono ${u.kind === "receivable" ? "pos" : "neg"}`}>
+                    {fmtMxn(u.amount)}
+                  </p>
+                )}
+                {(u.amount == null || u.amount === 0) && (
+                  <p class="row__amt muted small">{u.kind === "cut" ? "corte" : u.kind === "due" ? "pago" : ""}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <h2>Metas</h2>
+          <span class="muted">{goals.length}</span>
+        </div>
+        <ul class="rows">
+          {goals.map(g => {
+            const pct = g.target_amount ? Math.round(100 * (g.current_amount / g.target_amount)) : 0;
+            return (
+              <li class="row goal">
+                <div class="goal__main">
+                  <p class="row__title">{g.name}</p>
+                  <div class="goal__bar"><span style={`width:${Math.min(100, pct)}%`}></span></div>
+                  <p class="row__sub muted small">
+                    {g.target_amount ? <>{fmtMxn(g.current_amount)} / {fmtMxn(g.target_amount)}</> : fmtMxn(g.current_amount)}
+                    {g.target_date && <span> · {fmtDate(g.target_date)}</span>}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <style>
+    .dashboard__head { margin-bottom: var(--sp-8); }
+    .dashboard__head .small { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em; }
+    .small { font-size: var(--fs-xs); }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: var(--sp-3);
+      margin-bottom: var(--sp-6);
+    }
+    .kpi {
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: var(--sp-5);
+    }
+    .kpi__label {
+      font-size: var(--fs-xs);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin: 0 0 var(--sp-2);
+    }
+    .kpi__value { font-size: var(--fs-2xl); margin: 0 0 var(--sp-1); letter-spacing: -0.02em; }
+    .kpi__sub { font-size: var(--fs-xs); margin: 0; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--sp-4);
+    }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+    .card__head a { text-decoration: none; }
+    .card__head a:hover { color: var(--fg); }
+
+    .rows { list-style: none; margin: 0; padding: 0; }
+    .row {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3);
+      padding: var(--sp-3) 0;
+      border-top: 1px solid var(--line);
+    }
+    .row:first-child { border-top: none; padding-top: 0; }
+    .row__title { margin: 0; font-weight: 500; }
+    .row__sub { margin: 2px 0 0; }
+    .row__amt { margin: 0; font-size: var(--fs-md); white-space: nowrap; }
+
+    .goal { display: block; }
+    .goal__bar {
+      height: 4px; background: var(--bg-soft); border-radius: 999px; margin: 8px 0 6px;
+      overflow: hidden;
+    }
+    .goal__bar span { display: block; height: 100%; background: var(--fg); }
+  </style>
+</Base>

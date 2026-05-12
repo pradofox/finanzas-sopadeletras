@@ -1,0 +1,194 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listAccounts, listReceivables } from "../../lib/finance";
+import { fmtMxn, fmtDate, relativeDays } from "../../lib/format";
+
+const accounts = await listAccounts(true);
+const pending = await listReceivables();
+const active = pending.filter(r => r.status !== "paid" && r.status !== "cancelled");
+const closed = pending.filter(r => r.status === "paid" || r.status === "cancelled");
+const total = active.reduce((s, r) => s + (r.amount - r.paid_amount), 0);
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: "pendiente", partial: "parcial", paid: "cobrado", late: "atrasado", cancelled: "cancelado",
+};
+---
+<Base title="pipeline · finanzas" showNav={true}>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>Pipeline</h1>
+        <p class="muted small">{active.length} cobros pendientes · {fmtMxn(total)} por cobrar</p>
+      </div>
+      <button class="btn" id="new-btn">+ cobro</button>
+    </header>
+
+    <div class="card pipe">
+      {active.length === 0 ? (
+        <p class="muted small" style="padding: var(--sp-4)">Sin cobros pendientes.</p>
+      ) : (
+        <ul class="rows">
+          {active.map(r => (
+            <li class="row pipe__row" data-id={r.id} data-amount={r.amount - r.paid_amount} data-client={r.client} data-project={r.project ?? ""}>
+              <div class="pipe__left">
+                <p class="row__title">{r.client}</p>
+                <p class="muted small">{r.project ?? "—"}</p>
+                <p class="muted small">
+                  {r.expected_date ? <>esperado {fmtDate(r.expected_date)} · {relativeDays(r.expected_date)}</> : "fecha sin confirmar"}
+                </p>
+                {r.notes && <p class="muted small pipe__notes">{r.notes}</p>}
+              </div>
+              <div class="pipe__right">
+                <p class="row__amt mono pos">{fmtMxn(r.amount - r.paid_amount)}</p>
+                <p class="muted small">{STATUS_LABEL[r.status]}</p>
+                <button class="btn btn--ghost btn--sm pay-btn">marcar pagado</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+
+    {closed.length > 0 && (
+      <details class="closed">
+        <summary>Histórico ({closed.length})</summary>
+        <ul class="rows">
+          {closed.map(r => (
+            <li class="row">
+              <div>
+                <p class="row__title">{r.client}</p>
+                <p class="muted small">{r.project ?? "—"} · {STATUS_LABEL[r.status]} {r.paid_date && <>· {fmtDate(r.paid_date)}</>}</p>
+              </div>
+              <p class="row__amt mono muted">{fmtMxn(r.paid_amount || r.amount)}</p>
+            </li>
+          ))}
+        </ul>
+      </details>
+    )}
+  </main>
+
+  <dialog id="dlg-new" class="dlg">
+    <form method="dialog" class="dlg__form" id="new-form">
+      <header class="dlg__head"><h2>Nuevo cobro</h2><button type="button" class="dlg__close" data-close>×</button></header>
+      <label>cliente <input name="client" required /></label>
+      <label>proyecto <input name="project" /></label>
+      <label>monto (MXN) <input type="number" name="amount" step="0.01" min="0.01" required /></label>
+      <label>fecha esperada <input type="date" name="expected_date" /></label>
+      <label>notas <textarea name="notes" rows="2"></textarea></label>
+      <footer class="dlg__foot">
+        <button type="button" class="btn btn--ghost" data-close>cancelar</button>
+        <button type="submit" class="btn">guardar</button>
+      </footer>
+      <p class="login__msg" id="new-msg"></p>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-pay" class="dlg">
+    <form method="dialog" class="dlg__form" id="pay-form">
+      <header class="dlg__head"><h2>Marcar pagado</h2><button type="button" class="dlg__close" data-close>×</button></header>
+      <p class="muted small" id="pay-context"></p>
+      <input type="hidden" name="id" />
+      <label>monto cobrado (MXN) <input type="number" name="paid_amount" step="0.01" min="0.01" required /></label>
+      <label>fecha del cobro <input type="date" name="paid_date" required /></label>
+      <label>depositar en cuenta
+        <select name="account_id" required>
+          {accounts.filter(a => a.active && (a.type === "debit" || a.type === "cash")).map(a => <option value={a.id}>{a.name}</option>)}
+        </select>
+      </label>
+      <footer class="dlg__foot">
+        <button type="button" class="btn btn--ghost" data-close>cancelar</button>
+        <button type="submit" class="btn">confirmar</button>
+      </footer>
+      <p class="login__msg" id="pay-msg"></p>
+    </form>
+  </dialog>
+
+  <style>
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: var(--sp-6); }
+    .small { font-size: var(--fs-xs); }
+    .pipe { padding: 0; }
+    .pipe__row { padding: var(--sp-4) var(--sp-5); align-items: flex-start; gap: var(--sp-5); }
+    .pipe__left { flex: 1; }
+    .pipe__right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .pipe__right .row__amt { font-size: var(--fs-xl); }
+    .pipe__notes { margin-top: var(--sp-1); }
+    .btn--sm { padding: 6px 12px; font-size: var(--fs-sm); margin-top: var(--sp-2); }
+
+    .closed { margin-top: var(--sp-6); }
+    .closed summary { cursor: pointer; color: var(--muted); padding: var(--sp-3) 0; }
+    .closed[open] summary { color: var(--fg); }
+
+    .dlg { border: none; padding: 0; border-radius: var(--radius); max-width: 460px; width: 100%; background: var(--bg-elev); color: var(--fg); box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+    .dlg::backdrop { background: rgba(0,0,0,0.4); }
+    .dlg__form { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); }
+    .dlg__head { display: flex; justify-content: space-between; align-items: center; }
+    .dlg__head h2 { margin: 0; font-size: var(--fs-lg); }
+    .dlg__close { background: none; border: none; font-size: 28px; color: var(--muted); padding: 0; }
+    .dlg__form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--muted); text-transform: lowercase; letter-spacing: 0.06em; }
+    .dlg__form input, .dlg__form select, .dlg__form textarea { padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); font-size: var(--fs-md); }
+    .dlg__foot { display: flex; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-3); }
+    .login__msg { min-height: 1.4em; font-size: var(--fs-sm); margin: 0; }
+    .login__msg[data-tone="error"] { color: var(--negative); }
+  </style>
+
+  <script>
+    function bindCloseButtons(dlg: HTMLDialogElement) {
+      dlg.querySelectorAll<HTMLButtonElement>("[data-close]").forEach(b => {
+        b.addEventListener("click", () => dlg.close());
+      });
+    }
+
+    // New
+    const dlgNew = document.getElementById("dlg-new") as HTMLDialogElement;
+    bindCloseButtons(dlgNew);
+    document.getElementById("new-btn")!.addEventListener("click", () => dlgNew.showModal());
+    const newForm = document.getElementById("new-form") as HTMLFormElement;
+    const newMsg = document.getElementById("new-msg") as HTMLElement;
+    newForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(newForm);
+      const payload: Record<string, unknown> = {};
+      fd.forEach((v, k) => { if (v !== "" && v != null) payload[k] = v; });
+      payload.amount = Number(payload.amount);
+      newMsg.textContent = "guardando…";
+      const res = await fetch("/api/receivables", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      if (res.ok) window.location.reload();
+      else { newMsg.textContent = "no se pudo guardar"; newMsg.dataset.tone = "error"; }
+    });
+
+    // Pay
+    const dlgPay = document.getElementById("dlg-pay") as HTMLDialogElement;
+    bindCloseButtons(dlgPay);
+    const payForm = document.getElementById("pay-form") as HTMLFormElement;
+    const payContext = document.getElementById("pay-context") as HTMLElement;
+    const payMsg = document.getElementById("pay-msg") as HTMLElement;
+
+    document.querySelectorAll<HTMLButtonElement>(".pay-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const row = btn.closest<HTMLElement>(".pipe__row")!;
+        (payForm.elements.namedItem("id") as HTMLInputElement).value = row.dataset.id!;
+        (payForm.elements.namedItem("paid_amount") as HTMLInputElement).value = row.dataset.amount!;
+        (payForm.elements.namedItem("paid_date") as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
+        payContext.textContent = `${row.dataset.client}${row.dataset.project ? " · " + row.dataset.project : ""}`;
+        payMsg.textContent = "";
+        dlgPay.showModal();
+      });
+    });
+
+    payForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(payForm);
+      const id = Number(fd.get("id"));
+      const body = {
+        status: "paid",
+        paid_amount: Number(fd.get("paid_amount")),
+        paid_date: fd.get("paid_date"),
+        create_income: { account_id: Number(fd.get("account_id")) },
+      };
+      payMsg.textContent = "guardando…";
+      const res = await fetch(`/api/receivables/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else { payMsg.textContent = "no se pudo guardar"; payMsg.dataset.tone = "error"; }
+    });
+  </script>
+</Base>

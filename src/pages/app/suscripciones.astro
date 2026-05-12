@@ -1,0 +1,139 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listAccounts, listSubscriptions } from "../../lib/finance";
+import { fmtMxn, fmtDate } from "../../lib/format";
+
+const accounts = await listAccounts(true);
+const subs = await listSubscriptions(false);
+const active = subs.filter(s => s.active);
+const cancelled = subs.filter(s => !s.active);
+const monthly = active.reduce((s, x) => s + x.amount_monthly, 0);
+const yearly = monthly * 12;
+const accountById = new Map(accounts.map(a => [a.id, a]));
+---
+<Base title="suscripciones · finanzas" showNav={true}>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>Suscripciones</h1>
+        <p class="muted small">{active.length} activas · {fmtMxn(monthly)}/mes · {fmtMxn(yearly)}/año</p>
+      </div>
+      <button class="btn" id="new-btn">+ suscripción</button>
+    </header>
+
+    <div class="card subs">
+      {active.length === 0 ? (
+        <p class="muted small" style="padding: var(--sp-4)">Sin suscripciones activas.</p>
+      ) : (
+        <ul class="rows">
+          {active.map(s => {
+            const acc = s.account_id ? accountById.get(s.account_id) : null;
+            return (
+              <li class="row" data-id={s.id}>
+                <div>
+                  <p class="row__title">{s.service}</p>
+                  <p class="muted small">
+                    {acc ? acc.name : "—"}
+                    {s.notes && <span> · {s.notes}</span>}
+                  </p>
+                </div>
+                <div class="subs__right">
+                  <p class="row__amt mono">{fmtMxn(s.amount_monthly)}<span class="muted small">/mes</span></p>
+                  <button class="btn btn--ghost btn--sm cancel-btn" data-id={s.id} data-service={s.service}>cancelar</button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+
+    {cancelled.length > 0 && (
+      <details class="closed">
+        <summary>Canceladas ({cancelled.length})</summary>
+        <ul class="rows">
+          {cancelled.map(s => (
+            <li class="row">
+              <div>
+                <p class="row__title">{s.service}</p>
+                <p class="muted small">cancelada {s.cancelled_at ? fmtDate(new Date(s.cancelled_at).toISOString().slice(0,10)) : ""}</p>
+              </div>
+              <p class="row__amt mono muted">{fmtMxn(s.amount_monthly)}</p>
+            </li>
+          ))}
+        </ul>
+      </details>
+    )}
+  </main>
+
+  <dialog id="dlg-new" class="dlg">
+    <form method="dialog" class="dlg__form" id="new-form">
+      <header class="dlg__head"><h2>Nueva suscripción</h2><button type="button" class="dlg__close" data-close>×</button></header>
+      <label>servicio <input name="service" required /></label>
+      <label>monto mensual (MXN) <input type="number" name="amount_monthly" step="0.01" min="0.01" required /></label>
+      <label>cuenta donde se cobra
+        <select name="account_id"><option value="">—</option>{accounts.filter(a => a.active).map(a => <option value={a.id}>{a.name}</option>)}</select>
+      </label>
+      <label>notas <textarea name="notes" rows="2"></textarea></label>
+      <footer class="dlg__foot">
+        <button type="button" class="btn btn--ghost" data-close>cancelar</button>
+        <button type="submit" class="btn">guardar</button>
+      </footer>
+      <p class="login__msg" id="new-msg"></p>
+    </form>
+  </dialog>
+
+  <style>
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: var(--sp-6); }
+    .small { font-size: var(--fs-xs); }
+    .subs { padding: 0; }
+    .subs .row { padding: var(--sp-3) var(--sp-5); }
+    .subs__right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .btn--sm { padding: 6px 12px; font-size: var(--fs-sm); }
+    .closed { margin-top: var(--sp-6); }
+    .closed summary { cursor: pointer; color: var(--muted); padding: var(--sp-3) 0; }
+
+    .dlg { border: none; padding: 0; border-radius: var(--radius); max-width: 460px; width: 100%; background: var(--bg-elev); color: var(--fg); box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+    .dlg::backdrop { background: rgba(0,0,0,0.4); }
+    .dlg__form { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); }
+    .dlg__head { display: flex; justify-content: space-between; align-items: center; }
+    .dlg__head h2 { margin: 0; font-size: var(--fs-lg); }
+    .dlg__close { background: none; border: none; font-size: 28px; color: var(--muted); padding: 0; }
+    .dlg__form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--muted); text-transform: lowercase; letter-spacing: 0.06em; }
+    .dlg__form input, .dlg__form select, .dlg__form textarea { padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); font-size: var(--fs-md); }
+    .dlg__foot { display: flex; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-3); }
+    .login__msg { min-height: 1.4em; font-size: var(--fs-sm); margin: 0; }
+  </style>
+
+  <script>
+    const dlgNew = document.getElementById("dlg-new") as HTMLDialogElement;
+    dlgNew.querySelectorAll<HTMLButtonElement>("[data-close]").forEach(b => b.addEventListener("click", () => dlgNew.close()));
+    document.getElementById("new-btn")!.addEventListener("click", () => dlgNew.showModal());
+
+    const newForm = document.getElementById("new-form") as HTMLFormElement;
+    const newMsg = document.getElementById("new-msg") as HTMLElement;
+    newForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(newForm);
+      const payload: Record<string, unknown> = {};
+      fd.forEach((v, k) => { if (v !== "" && v != null) payload[k] = v; });
+      payload.amount_monthly = Number(payload.amount_monthly);
+      if (payload.account_id) payload.account_id = Number(payload.account_id);
+      else delete payload.account_id;
+      newMsg.textContent = "guardando…";
+      const res = await fetch("/api/subscriptions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      if (res.ok) window.location.reload();
+      else { newMsg.textContent = "no se pudo guardar"; newMsg.dataset.tone = "error"; }
+    });
+
+    document.querySelectorAll<HTMLButtonElement>(".cancel-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const service = btn.dataset.service;
+        if (!confirm(`¿Cancelar "${service}"?`)) return;
+        const res = await fetch(`/api/subscriptions/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ active: 0 }) });
+        if (res.ok) window.location.reload();
+      });
+    });
+  </script>
+</Base>

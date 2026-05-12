@@ -1,0 +1,201 @@
+---
+interface Props {
+  title?: string;
+  showNav?: boolean;
+}
+const { title = "finanzas · sopadeletras", showNav = false } = Astro.props;
+const session = (Astro.locals as any).session as { email: string } | undefined;
+const path = Astro.url.pathname;
+function isActive(prefix: string) {
+  if (prefix === "/app") return path === "/app";
+  return path.startsWith(prefix);
+}
+---
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <title>{title}</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d1d1f'/%3E%3Ctext x='50%25' y='58%25' text-anchor='middle' fill='%23fafafa' font-size='18' font-family='-apple-system,Helvetica,sans-serif' font-weight='600'%3E$%3C/text%3E%3C/svg%3E" />
+    <style is:global>
+      :root {
+        --bg: #fafafa;
+        --bg-elev: #ffffff;
+        --bg-soft: #f2f2f2;
+        --fg: #1d1d1f;
+        --muted: #6b6b70;
+        --line: #e5e5e7;
+        --line-strong: #d2d2d6;
+        --accent: #1d1d1f;
+        --positive: #2e7d57;
+        --negative: #c93e3e;
+        --warn: #b27000;
+        --radius: 12px;
+        --radius-sm: 8px;
+        --sp-1: 4px;
+        --sp-2: 8px;
+        --sp-3: 12px;
+        --sp-4: 16px;
+        --sp-5: 20px;
+        --sp-6: 24px;
+        --sp-8: 32px;
+        --sp-10: 40px;
+        --sp-12: 48px;
+        --sp-16: 64px;
+        --font-base: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+        --fs-xs: 12px;
+        --fs-sm: 14px;
+        --fs-md: 16px;
+        --fs-lg: 18px;
+        --fs-xl: 22px;
+        --fs-2xl: 28px;
+        --fs-3xl: 36px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root[data-theme="auto"] {
+          --bg: #0a0a0a;
+          --bg-elev: #141414;
+          --bg-soft: #1a1a1a;
+          --fg: #fafafa;
+          --muted: #8a8a90;
+          --line: #232326;
+          --line-strong: #2e2e33;
+          --accent: #fafafa;
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #0a0a0a;
+        --bg-elev: #141414;
+        --bg-soft: #1a1a1a;
+        --fg: #fafafa;
+        --muted: #8a8a90;
+        --line: #232326;
+        --line-strong: #2e2e33;
+        --accent: #fafafa;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: var(--font-base); font-size: var(--fs-md); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+      a { color: inherit; }
+      h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
+      h1 { font-size: var(--fs-3xl); letter-spacing: -0.03em; }
+      h2 { font-size: var(--fs-xl); }
+      h3 { font-size: var(--fs-lg); }
+      button { font: inherit; cursor: pointer; }
+      input, select, textarea { font: inherit; color: inherit; }
+      .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+      .muted { color: var(--muted); }
+      .pos { color: var(--positive); }
+      .neg { color: var(--negative); }
+      .warn { color: var(--warn); }
+
+      .topbar {
+        position: sticky; top: 0; z-index: 10;
+        background: color-mix(in srgb, var(--bg) 88%, transparent);
+        backdrop-filter: saturate(180%) blur(12px);
+        -webkit-backdrop-filter: saturate(180%) blur(12px);
+        border-bottom: 1px solid var(--line);
+      }
+      .topbar__inner {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: var(--sp-3) var(--sp-6);
+        display: flex; align-items: center; gap: var(--sp-6);
+      }
+      .topbar__brand { font-weight: 600; letter-spacing: -0.01em; text-decoration: none; }
+      .topbar__brand small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+      .topbar__nav { display: flex; gap: var(--sp-2); margin-left: auto; align-items: center; }
+      .topbar__nav a {
+        text-decoration: none; padding: 6px 12px; border-radius: var(--radius-sm);
+        font-size: var(--fs-sm); color: var(--muted);
+      }
+      .topbar__nav a:hover { color: var(--fg); background: var(--bg-soft); }
+      .topbar__nav a[aria-current="page"] { color: var(--fg); background: var(--bg-soft); }
+      .topbar__user { display: flex; align-items: center; gap: var(--sp-2); margin-left: var(--sp-3); padding-left: var(--sp-3); border-left: 1px solid var(--line); }
+      .topbar__user form { display: inline; }
+      .topbar__logout {
+        background: none; border: none; color: var(--muted); font-size: var(--fs-sm); padding: 0; cursor: pointer;
+      }
+      .topbar__logout:hover { color: var(--fg); }
+      .topbar__theme {
+        background: none; border: 1px solid var(--line-strong); border-radius: 999px;
+        padding: 4px 10px; font-size: var(--fs-xs); color: var(--muted);
+      }
+
+      main.shell { max-width: 1100px; margin: 0 auto; padding: var(--sp-8) var(--sp-6) var(--sp-16); }
+
+      .card {
+        background: var(--bg-elev); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: var(--sp-5);
+      }
+      .card__head { display: flex; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+      .card__head h2 { margin: 0; font-size: var(--fs-md); font-weight: 600; }
+      .card__head .muted { font-size: var(--fs-xs); }
+
+      .btn {
+        background: var(--accent); color: var(--bg); border: 1px solid var(--accent);
+        padding: 10px 18px; border-radius: 999px; font-weight: 500;
+        transition: opacity .15s ease;
+      }
+      .btn:hover { opacity: .9; }
+      .btn--ghost { background: transparent; color: var(--fg); border-color: var(--line-strong); }
+      .btn--ghost:hover { background: var(--bg-soft); opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem("finanzas-theme");
+          document.documentElement.dataset.theme = stored || "auto";
+        } catch { document.documentElement.dataset.theme = "auto"; }
+      })();
+    </script>
+
+    {showNav && (
+      <header class="topbar">
+        <div class="topbar__inner">
+          <a class="topbar__brand" href="/app">finanzas <small>sopadeletras</small></a>
+          <nav class="topbar__nav" aria-label="Secciones">
+            <a href="/app" aria-current={isActive("/app") ? "page" : undefined}>Resumen</a>
+            <a href="/app/movimientos" aria-current={isActive("/app/movimientos") ? "page" : undefined}>Movimientos</a>
+            <a href="/app/pipeline" aria-current={isActive("/app/pipeline") ? "page" : undefined}>Pipeline</a>
+            <a href="/app/suscripciones" aria-current={isActive("/app/suscripciones") ? "page" : undefined}>Suscripciones</a>
+          </nav>
+          <div class="topbar__user">
+            <button type="button" class="topbar__theme" id="theme-toggle" title="Cambiar tema">auto</button>
+            {session && (
+              <form method="post" action="/api/auth/logout">
+                <button type="submit" class="topbar__logout">salir</button>
+              </form>
+            )}
+          </div>
+        </div>
+      </header>
+    )}
+
+    <slot />
+
+    <script>
+      const btn = document.getElementById("theme-toggle");
+      if (btn) {
+        const order = ["auto", "light", "dark"];
+        const sync = () => {
+          const t = document.documentElement.dataset.theme || "auto";
+          btn.textContent = t;
+        };
+        sync();
+        btn.addEventListener("click", () => {
+          const cur = document.documentElement.dataset.theme || "auto";
+          const next = order[(order.indexOf(cur) + 1) % order.length];
+          document.documentElement.dataset.theme = next;
+          try { localStorage.setItem("finanzas-theme", next); } catch {}
+          sync();
+        });
+      }
+    </script>
+  </body>
+</html>

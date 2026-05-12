@@ -1,0 +1,187 @@
+---
+import Base from "../layouts/Base.astro";
+const nextPath = Astro.url.searchParams.get("next") || "/app";
+---
+<Base title="entrar · finanzas">
+  <main class="login">
+    <div class="login__panel">
+      <p class="login__eyebrow">finanzas <span class="muted">· sopadeletras</span></p>
+      <h1 id="step-title">Tu correo<br/>y te mandamos un código.</h1>
+      <p class="login__lead muted" id="step-lead">
+        Solo Roberto y Lili tienen acceso. Si tu correo no está en la lista, no llega nada.
+      </p>
+
+      <form id="step-email" class="login__form" novalidate>
+        <label class="login__label" for="email">correo</label>
+        <input id="email" name="email" type="email" required autocomplete="email" inputmode="email"
+               placeholder="tucorreo@sopadeletras.art" />
+        <button type="submit" class="btn">enviar código</button>
+        <p class="login__msg" id="email-msg" role="status" aria-live="polite"></p>
+      </form>
+
+      <form id="step-code" class="login__form login__form--hidden" novalidate>
+        <label class="login__label" for="code">código de 6 dígitos</label>
+        <input id="code" name="code" type="text" required autocomplete="one-time-code"
+               inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" />
+        <input type="hidden" id="code-email" value="" />
+        <input type="hidden" id="code-next" value={nextPath} />
+        <button type="submit" class="btn">entrar</button>
+        <p class="login__msg" id="code-msg" role="status" aria-live="polite"></p>
+        <button type="button" class="login__back" id="back-to-email">← cambiar correo</button>
+      </form>
+    </div>
+  </main>
+
+  <style>
+    .login {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: var(--sp-6);
+    }
+    .login__panel {
+      width: 100%; max-width: 420px;
+      background: var(--bg-elev);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: var(--sp-10) var(--sp-8);
+    }
+    .login__eyebrow {
+      margin: 0 0 var(--sp-4);
+      font-size: var(--fs-xs);
+      text-transform: lowercase;
+      letter-spacing: 0.08em;
+      color: var(--fg);
+    }
+    .login h1 { font-size: var(--fs-2xl); line-height: 1.15; margin-bottom: var(--sp-3); }
+    .login__lead { margin: 0 0 var(--sp-8); font-size: var(--fs-sm); }
+    .login__form { display: flex; flex-direction: column; gap: var(--sp-3); }
+    .login__form--hidden { display: none; }
+    .login__label {
+      font-size: var(--fs-xs); color: var(--muted);
+      text-transform: lowercase; letter-spacing: 0.06em;
+    }
+    .login__form input {
+      padding: 12px 14px;
+      background: var(--bg);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      outline: none;
+      transition: border-color .15s ease;
+    }
+    .login__form input:focus { border-color: var(--fg); }
+    #code {
+      font-family: var(--font-mono);
+      letter-spacing: 0.4em; font-size: var(--fs-lg); text-align: center;
+    }
+    .login .btn { margin-top: var(--sp-3); align-self: stretch; }
+    .login .btn[disabled] { opacity: 0.5; cursor: wait; }
+    .login__msg { min-height: 1.4em; font-size: var(--fs-sm); margin: 0; }
+    .login__msg[data-tone="ok"] { color: var(--positive); }
+    .login__msg[data-tone="error"] { color: var(--negative); }
+    .login__back {
+      margin-top: var(--sp-2); background: transparent; border: none;
+      color: var(--muted); font-size: var(--fs-sm); align-self: flex-start; padding: 0;
+    }
+    .login__back:hover { color: var(--fg); }
+  </style>
+
+  <script>
+    const stepEmail = document.getElementById("step-email") as HTMLFormElement;
+    const stepCode  = document.getElementById("step-code")  as HTMLFormElement;
+    const emailInput = document.getElementById("email") as HTMLInputElement;
+    const codeInput  = document.getElementById("code")  as HTMLInputElement;
+    const codeEmail  = document.getElementById("code-email") as HTMLInputElement;
+    const codeNext   = document.getElementById("code-next")  as HTMLInputElement;
+    const stepTitle  = document.getElementById("step-title") as HTMLElement;
+    const stepLead   = document.getElementById("step-lead")  as HTMLElement;
+    const emailMsg   = document.getElementById("email-msg")  as HTMLElement;
+    const codeMsg    = document.getElementById("code-msg")   as HTMLElement;
+    const backBtn    = document.getElementById("back-to-email") as HTMLButtonElement;
+
+    function setMsg(el: HTMLElement, text: string, tone: "ok" | "error" | "info" = "info") {
+      el.textContent = text;
+      el.dataset.tone = tone;
+    }
+
+    function showStep(which: "email" | "code") {
+      if (which === "email") {
+        stepEmail.classList.remove("login__form--hidden");
+        stepCode.classList.add("login__form--hidden");
+        stepTitle.innerHTML = "Tu correo<br/>y te mandamos un código.";
+        stepLead.textContent = "Solo Roberto y Lili tienen acceso. Si tu correo no está en la lista, no llega nada.";
+        emailInput.focus();
+      } else {
+        stepEmail.classList.add("login__form--hidden");
+        stepCode.classList.remove("login__form--hidden");
+        stepTitle.innerHTML = "Revisa tu correo<br/>y pega el código.";
+        stepLead.innerHTML = `Te mandamos un código de 6 dígitos a <strong>${codeEmail.value}</strong>. Vence en 10 min.`;
+        codeInput.focus();
+      }
+    }
+
+    stepEmail.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = stepEmail.querySelector('button[type="submit"]') as HTMLButtonElement;
+      const email = emailInput.value.trim().toLowerCase();
+      if (!email.includes("@")) { setMsg(emailMsg, "Correo inválido.", "error"); return; }
+      btn.disabled = true;
+      setMsg(emailMsg, "enviando…", "info");
+      try {
+        const res = await fetch("/api/auth/request", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        if (!res.ok) { setMsg(emailMsg, "Algo salió mal. Intenta otra vez.", "error"); return; }
+        codeEmail.value = email;
+        setMsg(emailMsg, "", "info");
+        showStep("code");
+      } catch {
+        setMsg(emailMsg, "Error de red. Intenta otra vez.", "error");
+      } finally { btn.disabled = false; }
+    });
+
+    stepCode.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = stepCode.querySelector('button[type="submit"]') as HTMLButtonElement;
+      const email = codeEmail.value;
+      const code = codeInput.value.trim();
+      if (!/^\d{6}$/.test(code)) { setMsg(codeMsg, "El código son 6 dígitos.", "error"); return; }
+      btn.disabled = true;
+      setMsg(codeMsg, "verificando…", "info");
+      try {
+        const res = await fetch("/api/auth/verify", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, code }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string };
+        if (res.ok && data.ok) {
+          setMsg(codeMsg, "todo bien, entrando…", "ok");
+          window.location.assign(codeNext.value || data.redirect || "/app");
+          return;
+        }
+        const reason = data.error ?? "unknown";
+        const msg = reason === "wrong_code" ? "Código incorrecto."
+          : reason === "no_active_code" ? "El código venció. Vuelve a pedir uno."
+          : reason === "too_many_attempts" ? "Demasiados intentos. Pide un código nuevo."
+          : "No se pudo verificar.";
+        setMsg(codeMsg, msg, "error");
+      } catch {
+        setMsg(codeMsg, "Error de red. Intenta otra vez.", "error");
+      } finally { btn.disabled = false; }
+    });
+
+    backBtn.addEventListener("click", () => {
+      codeInput.value = "";
+      setMsg(codeMsg, "", "info");
+      showStep("email");
+    });
+
+    codeInput.addEventListener("input", () => {
+      const v = codeInput.value.replace(/\D/g, "").slice(0, 6);
+      codeInput.value = v;
+      if (v.length === 6) stepCode.requestSubmit();
+    });
+  </script>
+</Base>

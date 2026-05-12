@@ -1,0 +1,278 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listAccounts, listMovements } from "../../lib/finance";
+import { fmtMxn, fmtDate } from "../../lib/format";
+
+const accounts = await listAccounts(true);
+const movements = await listMovements({ limit: 200 });
+const accountById = new Map(accounts.map(a => [a.id, a]));
+
+const KIND_LABEL: Record<string, string> = {
+  income: "Ingreso",
+  expense: "Gasto",
+  transfer: "Traspaso",
+  cc_payment: "Pago TDC",
+  cc_charge: "Cargo TDC",
+};
+---
+<Base title="movimientos · finanzas" showNav={true}>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>Movimientos</h1>
+        <p class="muted small">{movements.length} más recientes</p>
+      </div>
+      <button class="btn" id="new-btn">+ nuevo</button>
+    </header>
+
+    <div class="filters">
+      <select id="f-account" aria-label="Cuenta">
+        <option value="">todas las cuentas</option>
+        {accounts.map(a => <option value={a.id}>{a.name}</option>)}
+      </select>
+      <select id="f-kind" aria-label="Tipo">
+        <option value="">todos los tipos</option>
+        <option value="income">Ingresos</option>
+        <option value="expense">Gastos</option>
+        <option value="transfer">Traspasos</option>
+        <option value="cc_payment">Pagos TDC</option>
+        <option value="cc_charge">Cargos TDC</option>
+      </select>
+      <input type="search" id="f-q" placeholder="buscar texto…" />
+    </div>
+
+    <div class="table card">
+      <div class="table__head">
+        <div>Fecha</div>
+        <div>Cuenta</div>
+        <div>Tipo</div>
+        <div>Descripción</div>
+        <div class="right">Monto</div>
+      </div>
+      {movements.length === 0 ? (
+        <p class="muted small" style="padding: var(--sp-4)">Aún no hay movimientos. Captura el primero con + nuevo.</p>
+      ) : (
+        <ul class="table__body" id="rows">
+          {movements.map(m => {
+            const a = accountById.get(m.account_id);
+            const sign = m.kind === "income" ? 1 : -1;
+            return (
+              <li class="trow"
+                  data-account={m.account_id}
+                  data-kind={m.kind}
+                  data-text={`${m.category ?? ""} ${m.counterparty ?? ""} ${m.description ?? ""} ${m.notes ?? ""}`.toLowerCase()}>
+                <div class="mono small">{fmtDate(m.date)}</div>
+                <div class="trow__name">{a?.name ?? `#${m.account_id}`}</div>
+                <div class="muted small">{KIND_LABEL[m.kind] ?? m.kind}</div>
+                <div>
+                  <p class="trow__desc">{m.description ?? m.counterparty ?? <span class="muted">—</span>}</p>
+                  {m.category && <p class="muted small">{m.category}</p>}
+                </div>
+                <div class={`right mono ${sign > 0 ? "pos" : "neg"}`}>
+                  {sign > 0 ? "+" : "-"}{fmtMxn(m.amount).replace("-", "")}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  </main>
+
+  <dialog id="dlg" class="dlg">
+    <form method="dialog" class="dlg__form" id="new-form">
+      <header class="dlg__head">
+        <h2>Nuevo movimiento</h2>
+        <button type="button" class="dlg__close" id="dlg-close" aria-label="Cerrar">×</button>
+      </header>
+
+      <label>fecha
+        <input type="date" name="date" id="f-date" required />
+      </label>
+      <label>cuenta
+        <select name="account_id" required>
+          {accounts.filter(a => a.active).map(a => <option value={a.id}>{a.name}</option>)}
+        </select>
+      </label>
+      <label>tipo
+        <select name="kind" required>
+          <option value="expense">Gasto</option>
+          <option value="income">Ingreso</option>
+          <option value="cc_charge">Cargo a TDC</option>
+          <option value="cc_payment">Pago a TDC</option>
+          <option value="transfer">Traspaso</option>
+        </select>
+      </label>
+      <label>monto (MXN)
+        <input type="number" name="amount" step="0.01" min="0.01" required />
+      </label>
+      <label>descripción
+        <input type="text" name="description" placeholder="ej. uber centro, super, gasolina" />
+      </label>
+      <label>categoría
+        <input type="text" name="category" list="cat-options" placeholder="ej. comida, transporte" />
+        <datalist id="cat-options">
+          <option value="comida"></option><option value="transporte"></option>
+          <option value="suscripciones"></option><option value="ingresos"></option>
+          <option value="boda"></option><option value="estudio"></option>
+          <option value="salud"></option><option value="renta"></option>
+        </datalist>
+      </label>
+      <label>contraparte
+        <input type="text" name="counterparty" placeholder="ej. Walmart, GIM, Hugo Prado" />
+      </label>
+      <label>notas
+        <textarea name="notes" rows="2"></textarea>
+      </label>
+
+      <footer class="dlg__foot">
+        <button type="button" class="btn btn--ghost" id="dlg-cancel">cancelar</button>
+        <button type="submit" class="btn">guardar</button>
+      </footer>
+      <p class="login__msg" id="new-msg" role="status" aria-live="polite"></p>
+    </form>
+  </dialog>
+
+  <style>
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: var(--sp-6); }
+    .small { font-size: var(--fs-xs); }
+    .right { text-align: right; }
+
+    .filters { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-4); flex-wrap: wrap; }
+    .filters select, .filters input {
+      padding: 8px 12px;
+      border: 1px solid var(--line-strong);
+      background: var(--bg-elev);
+      border-radius: var(--radius-sm);
+      font-size: var(--fs-sm);
+    }
+    .filters input { flex: 1; min-width: 180px; }
+
+    .table { padding: 0; overflow: hidden; }
+    .table__head, .trow {
+      display: grid;
+      grid-template-columns: 110px 1.2fr 0.8fr 2fr 1fr;
+      gap: var(--sp-3);
+      padding: var(--sp-3) var(--sp-5);
+      align-items: center;
+    }
+    .table__head {
+      font-size: var(--fs-xs); color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--line);
+      background: var(--bg-soft);
+    }
+    .table__body { list-style: none; padding: 0; margin: 0; }
+    .trow { border-bottom: 1px solid var(--line); }
+    .trow:last-child { border-bottom: none; }
+    .trow__name { font-weight: 500; }
+    .trow__desc { margin: 0; }
+    .trow.hidden { display: none; }
+
+    @media (max-width: 720px) {
+      .table__head { display: none; }
+      .trow {
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto auto;
+        gap: 2px;
+      }
+      .trow > div:nth-child(1) { grid-column: 1; grid-row: 1; }
+      .trow > div:nth-child(2) { grid-column: 1; grid-row: 2; }
+      .trow > div:nth-child(3) { grid-column: 2; grid-row: 1; text-align: right; }
+      .trow > div:nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
+      .trow > div:nth-child(5) { grid-column: 2; grid-row: 2; }
+    }
+
+    .dlg {
+      border: none; padding: 0; border-radius: var(--radius);
+      max-width: 460px; width: 100%;
+      background: var(--bg-elev); color: var(--fg);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+    .dlg::backdrop { background: rgba(0,0,0,0.4); }
+    .dlg__form { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); }
+    .dlg__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-2); }
+    .dlg__head h2 { margin: 0; font-size: var(--fs-lg); }
+    .dlg__close { background: none; border: none; font-size: 28px; line-height: 1; color: var(--muted); padding: 0; }
+    .dlg__form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--muted); text-transform: lowercase; letter-spacing: 0.06em; }
+    .dlg__form input, .dlg__form select, .dlg__form textarea {
+      padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+      background: var(--bg); color: var(--fg); font-size: var(--fs-md);
+    }
+    .dlg__form input:focus, .dlg__form select:focus, .dlg__form textarea:focus { outline: none; border-color: var(--fg); }
+    .dlg__foot { display: flex; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-3); }
+  </style>
+
+  <script>
+    const dlg = document.getElementById("dlg") as HTMLDialogElement;
+    const newBtn = document.getElementById("new-btn") as HTMLButtonElement;
+    const closeBtn = document.getElementById("dlg-close") as HTMLButtonElement;
+    const cancelBtn = document.getElementById("dlg-cancel") as HTMLButtonElement;
+    const form = document.getElementById("new-form") as HTMLFormElement;
+    const dateInput = document.getElementById("f-date") as HTMLInputElement;
+    const msg = document.getElementById("new-msg") as HTMLElement;
+
+    function openDialog() {
+      dateInput.value = new Date().toISOString().slice(0, 10);
+      msg.textContent = "";
+      dlg.showModal();
+      (form.elements.namedItem("amount") as HTMLInputElement | null)?.focus();
+    }
+    newBtn.addEventListener("click", openDialog);
+    closeBtn.addEventListener("click", () => dlg.close());
+    cancelBtn.addEventListener("click", () => dlg.close());
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "n" && !dlg.open && !(e.target as HTMLElement).matches("input,textarea,select")) {
+        e.preventDefault(); openDialog();
+      }
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const payload: Record<string, unknown> = {};
+      fd.forEach((v, k) => { if (v !== "" && v != null) payload[k] = v; });
+      payload.account_id = Number(payload.account_id);
+      payload.amount = Number(payload.amount);
+      msg.textContent = "guardando…"; msg.dataset.tone = "info";
+      try {
+        const res = await fetch("/api/movements", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) { msg.textContent = "no se pudo guardar"; msg.dataset.tone = "error"; return; }
+        window.location.reload();
+      } catch {
+        msg.textContent = "error de red"; msg.dataset.tone = "error";
+      }
+    });
+
+    // Filtros client-side
+    const fAccount = document.getElementById("f-account") as HTMLSelectElement;
+    const fKind = document.getElementById("f-kind") as HTMLSelectElement;
+    const fQ = document.getElementById("f-q") as HTMLInputElement;
+    const rows = Array.from(document.querySelectorAll<HTMLLIElement>("#rows .trow"));
+
+    function applyFilters() {
+      const acc = fAccount.value;
+      const kind = fKind.value;
+      const q = fQ.value.trim().toLowerCase();
+      for (const r of rows) {
+        const matchAcc = !acc || r.dataset.account === acc;
+        const matchKind = !kind || r.dataset.kind === kind;
+        const matchQ = !q || (r.dataset.text || "").includes(q);
+        r.classList.toggle("hidden", !(matchAcc && matchKind && matchQ));
+      }
+    }
+    [fAccount, fKind].forEach(el => el.addEventListener("change", applyFilters));
+    fQ.addEventListener("input", applyFilters);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "/" && !dlg.open && !(e.target as HTMLElement).matches("input,textarea,select")) {
+        e.preventDefault(); fQ.focus();
+      }
+    });
+  </script>
+</Base>

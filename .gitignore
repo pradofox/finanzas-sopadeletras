@@ -1,0 +1,20 @@
+node_modules
+dist
+.astro
+.wrangler
+.dev.vars
+.dev.vars.*
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Local-only secrets and notes
+secrets/
+*.local
+
+# Tokens / keys nunca al repo
+*token*
+*.pem
+*.key
