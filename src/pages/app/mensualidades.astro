@@ -1,0 +1,322 @@
+---
+import Base from "../../layouts/Base.astro";
+import { listAccounts, listInstallmentPlans, listInstallmentPayments } from "../../lib/finance";
+import { fmtMxn, fmtDate } from "../../lib/format";
+
+const accounts = await listAccounts(true);
+const plans = await listInstallmentPlans(false);
+const active = plans.filter(p => p.status === "active");
+const closed = plans.filter(p => p.status !== "active");
+const totalRemaining = active.reduce((s, p) => s + p.remaining_amount, 0);
+const totalMonthly = active.reduce((s, p) => s + p.monthly_amount, 0);
+
+// Pre-cargar pagos de planes activos para mostrar historial inline
+const paymentsByPlan = new Map<number, Awaited<ReturnType<typeof listInstallmentPayments>>>();
+await Promise.all(active.map(async p => {
+  paymentsByPlan.set(p.id, await listInstallmentPayments(p.id));
+}));
+const accountById = new Map(accounts.map(a => [a.id, a]));
+---
+<Base title="mensualidades · finanzas" showNav={true}>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>Mensualidades</h1>
+        <p class="muted small">
+          {active.length} planes activos · resta {fmtMxn(totalRemaining)} · {fmtMxn(totalMonthly)}/mes
+        </p>
+      </div>
+      <button class="btn" id="new-btn">+ plan</button>
+    </header>
+
+    {active.length === 0 ? (
+      <div class="card"><p class="muted small">Sin mensualidades activas.</p></div>
+    ) : (
+      <div class="plans">
+        {active.map(p => {
+          const pct = p.total_amount > 0 ? Math.min(100, Math.round(100 * (p.paid_amount / p.total_amount))) : 0;
+          const pays = paymentsByPlan.get(p.id) ?? [];
+          return (
+            <article class="card plan" data-id={p.id} data-monthly={p.monthly_amount} data-remaining={p.remaining_amount} data-concept={p.concept} data-creditor={p.creditor}>
+              <header class="plan__head">
+                <div>
+                  <p class="plan__concept">{p.concept}</p>
+                  <p class="muted small">a {p.creditor}{p.start_date && <span> · inicio {fmtDate(p.start_date)}</span>}</p>
+                </div>
+                <div class="plan__amounts">
+                  <p class="row__amt mono neg">{fmtMxn(p.remaining_amount)}</p>
+                  <p class="muted small">de {fmtMxn(p.total_amount)}</p>
+                </div>
+              </header>
+
+              <div class="plan__progress">
+                <div class="bar"><span style={`width:${pct}%`}></span></div>
+                <p class="muted small">
+                  {p.months_paid} / {p.months_total} meses · {fmtMxn(p.monthly_amount)}/mes
+                </p>
+              </div>
+
+              <div class="plan__actions">
+                <button class="btn btn--sm pay-btn">registrar pago</button>
+                <button class="btn btn--ghost btn--sm delete-plan-btn">eliminar plan</button>
+              </div>
+
+              {pays.length > 0 && (
+                <details class="plan__history">
+                  <summary class="muted small">{pays.length} pago{pays.length === 1 ? "" : "s"} registrado{pays.length === 1 ? "" : "s"}</summary>
+                  <ul class="rows">
+                    {pays.map(pay => {
+                      const acc = pay.account_id ? accountById.get(pay.account_id) : null;
+                      return (
+                        <li class="row">
+                          <div>
+                            <p class="row__title small">{fmtDate(pay.date)}{pay.months_covered > 1 && <span class="muted"> · {pay.months_covered} meses</span>}</p>
+                            <p class="muted small">
+                              {acc ? acc.name : "sin cuenta"}
+                              {pay.notes && <span> · {pay.notes}</span>}
+                            </p>
+                          </div>
+                          <div class="plan__pay-right">
+                            <p class="row__amt mono">{fmtMxn(pay.amount)}</p>
+                            <button class="del-pay-btn muted small" data-id={pay.id} title="Borrar pago">×</button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </details>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    )}
+
+    {closed.length > 0 && (
+      <details class="closed">
+        <summary>Histórico ({closed.length})</summary>
+        <ul class="rows">
+          {closed.map(p => (
+            <li class="row">
+              <div>
+                <p class="row__title">{p.concept}</p>
+                <p class="muted small">a {p.creditor} · {p.status === "paid" ? "liquidado" : "cancelado"}</p>
+              </div>
+              <p class="row__amt mono muted">{fmtMxn(p.total_amount)}</p>
+            </li>
+          ))}
+        </ul>
+      </details>
+    )}
+  </main>
+
+  <dialog id="dlg-new" class="dlg">
+    <form method="dialog" class="dlg__form" id="new-form">
+      <header class="dlg__head"><h2>Nuevo plan</h2><button type="button" class="dlg__close" data-close>×</button></header>
+      <label>concepto <input name="concept" required placeholder="Centro de lavado" /></label>
+      <label>acreedor (a quién le pagas) <input name="creditor" required placeholder="Mamá de Roberto" /></label>
+      <div class="dlg__row">
+        <label>monto total (MXN) <input type="number" name="total_amount" step="0.01" min="0.01" required /></label>
+        <label># meses <input type="number" name="months_total" min="1" step="1" required /></label>
+      </div>
+      <label>mensualidad (MXN) <input type="number" name="monthly_amount" step="0.01" min="0.01" required /></label>
+      <p class="muted small" id="new-hint"></p>
+      <label>fecha de inicio <input type="date" name="start_date" /></label>
+      <label>notas <textarea name="notes" rows="2"></textarea></label>
+      <footer class="dlg__foot">
+        <button type="button" class="btn btn--ghost" data-close>cancelar</button>
+        <button type="submit" class="btn">guardar</button>
+      </footer>
+      <p class="login__msg" id="new-msg"></p>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-pay" class="dlg">
+    <form method="dialog" class="dlg__form" id="pay-form">
+      <header class="dlg__head"><h2>Registrar pago</h2><button type="button" class="dlg__close" data-close>×</button></header>
+      <p class="muted small" id="pay-context"></p>
+      <input type="hidden" name="plan_id" />
+      <div class="dlg__row">
+        <label>monto (MXN) <input type="number" name="amount" step="0.01" min="0.01" required /></label>
+        <label>meses que cubre <input type="number" name="months_covered" min="1" step="1" value="1" required /></label>
+      </div>
+      <label>fecha del pago <input type="date" name="date" required /></label>
+      <label>cuenta de origen (opcional)
+        <select name="account_id">
+          <option value="">— sin afectar cuentas</option>
+          {accounts.filter(a => a.active).map(a => <option value={a.id}>{a.name}</option>)}
+        </select>
+      </label>
+      <p class="muted small">Si eliges cuenta, se crea un movimiento automático y baja el saldo. Si la dejas en blanco, sólo se registra el pago en el plan.</p>
+      <label>notas <textarea name="notes" rows="2"></textarea></label>
+      <footer class="dlg__foot">
+        <button type="button" class="btn btn--ghost" data-close>cancelar</button>
+        <button type="submit" class="btn">confirmar</button>
+      </footer>
+      <p class="login__msg" id="pay-msg"></p>
+    </form>
+  </dialog>
+
+  <style>
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: var(--sp-6); }
+    .small { font-size: var(--fs-xs); }
+
+    .plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--sp-4); }
+    .plan { display: flex; flex-direction: column; gap: var(--sp-3); }
+    .plan__head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); }
+    .plan__concept { margin: 0; font-weight: 600; font-size: var(--fs-lg); }
+    .plan__amounts { text-align: right; }
+    .plan__amounts .row__amt { font-size: var(--fs-xl); }
+    .plan__amounts .small { margin: 2px 0 0; }
+
+    .bar { height: 6px; background: var(--bg-soft); border-radius: 999px; overflow: hidden; margin-bottom: 6px; }
+    .bar span { display: block; height: 100%; background: var(--fg); }
+
+    .plan__actions { display: flex; gap: var(--sp-2); }
+    .btn--sm { padding: 6px 12px; font-size: var(--fs-sm); }
+
+    .plan__history summary { cursor: pointer; padding: var(--sp-2) 0; }
+    .plan__history .rows { margin-top: var(--sp-2); }
+    .plan__history .row { padding: var(--sp-2) 0; }
+    .plan__pay-right { display: flex; align-items: center; gap: var(--sp-2); }
+    .del-pay-btn { background: none; border: none; font-size: 18px; padding: 0 6px; cursor: pointer; }
+    .del-pay-btn:hover { color: var(--negative); }
+
+    .closed { margin-top: var(--sp-8); }
+    .closed summary { cursor: pointer; color: var(--muted); padding: var(--sp-3) 0; }
+
+    .dlg { border: none; padding: 0; border-radius: var(--radius); max-width: 460px; width: 100%; background: var(--bg-elev); color: var(--fg); box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+    .dlg::backdrop { background: rgba(0,0,0,0.4); }
+    .dlg__form { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); }
+    .dlg__head { display: flex; justify-content: space-between; align-items: center; }
+    .dlg__head h2 { margin: 0; font-size: var(--fs-lg); }
+    .dlg__close { background: none; border: none; font-size: 28px; color: var(--muted); padding: 0; }
+    .dlg__form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--muted); text-transform: lowercase; letter-spacing: 0.06em; }
+    .dlg__form input, .dlg__form select, .dlg__form textarea { padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); font-size: var(--fs-md); }
+    .dlg__row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+    .dlg__foot { display: flex; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-3); }
+    .login__msg { min-height: 1.4em; font-size: var(--fs-sm); margin: 0; }
+    .login__msg[data-tone="error"] { color: var(--negative); }
+  </style>
+
+  <script>
+    function bindCloseButtons(dlg: HTMLDialogElement) {
+      dlg.querySelectorAll<HTMLButtonElement>("[data-close]").forEach(b =>
+        b.addEventListener("click", () => dlg.close())
+      );
+    }
+
+    // Nuevo plan
+    const dlgNew = document.getElementById("dlg-new") as HTMLDialogElement;
+    bindCloseButtons(dlgNew);
+    document.getElementById("new-btn")!.addEventListener("click", () => dlgNew.showModal());
+
+    const newForm = document.getElementById("new-form") as HTMLFormElement;
+    const newMsg = document.getElementById("new-msg") as HTMLElement;
+    const newHint = document.getElementById("new-hint") as HTMLElement;
+
+    // Auto-sugerir mensualidad cuando se llenan total + meses
+    function recalcHint() {
+      const total = Number((newForm.elements.namedItem("total_amount") as HTMLInputElement).value);
+      const months = Number((newForm.elements.namedItem("months_total") as HTMLInputElement).value);
+      const monthlyInput = newForm.elements.namedItem("monthly_amount") as HTMLInputElement;
+      if (total > 0 && months > 0) {
+        const sugg = (total / months).toFixed(2);
+        newHint.textContent = `sugerido: $${sugg}/mes`;
+        if (!monthlyInput.value) monthlyInput.placeholder = sugg;
+      } else { newHint.textContent = ""; }
+    }
+    ["total_amount","months_total"].forEach(n => {
+      (newForm.elements.namedItem(n) as HTMLInputElement).addEventListener("input", recalcHint);
+    });
+
+    newForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(newForm);
+      const payload: Record<string, unknown> = {};
+      fd.forEach((v, k) => { if (v !== "" && v != null) payload[k] = v; });
+      payload.total_amount = Number(payload.total_amount);
+      payload.monthly_amount = Number(payload.monthly_amount);
+      payload.months_total = Number(payload.months_total);
+      newMsg.textContent = "guardando…";
+      const res = await fetch("/api/installments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      if (res.ok) window.location.reload();
+      else { newMsg.textContent = "no se pudo guardar"; newMsg.dataset.tone = "error"; }
+    });
+
+    // Registrar pago
+    const dlgPay = document.getElementById("dlg-pay") as HTMLDialogElement;
+    bindCloseButtons(dlgPay);
+    const payForm = document.getElementById("pay-form") as HTMLFormElement;
+    const payContext = document.getElementById("pay-context") as HTMLElement;
+    const payMsg = document.getElementById("pay-msg") as HTMLElement;
+
+    document.querySelectorAll<HTMLButtonElement>(".pay-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const card = btn.closest<HTMLElement>(".plan")!;
+        const planId = card.dataset.id!;
+        const monthly = card.dataset.monthly!;
+        const remaining = Number(card.dataset.remaining);
+        (payForm.elements.namedItem("plan_id") as HTMLInputElement).value = planId;
+        (payForm.elements.namedItem("amount") as HTMLInputElement).value = Math.min(Number(monthly), remaining).toFixed(2);
+        (payForm.elements.namedItem("months_covered") as HTMLInputElement).value = "1";
+        (payForm.elements.namedItem("date") as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
+        payContext.textContent = `${card.dataset.concept} → ${card.dataset.creditor}`;
+        payMsg.textContent = "";
+        dlgPay.showModal();
+      });
+    });
+
+    // Auto-ajustar monto cuando cambian meses-cubiertos
+    (payForm.elements.namedItem("months_covered") as HTMLInputElement).addEventListener("input", (e) => {
+      const months = Number((e.target as HTMLInputElement).value);
+      const planId = (payForm.elements.namedItem("plan_id") as HTMLInputElement).value;
+      const card = document.querySelector<HTMLElement>(`.plan[data-id="${planId}"]`);
+      if (!card || months <= 0) return;
+      const monthly = Number(card.dataset.monthly);
+      const remaining = Number(card.dataset.remaining);
+      (payForm.elements.namedItem("amount") as HTMLInputElement).value = Math.min(monthly * months, remaining).toFixed(2);
+    });
+
+    payForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(payForm);
+      const planId = Number(fd.get("plan_id"));
+      const body: Record<string, unknown> = {
+        amount: Number(fd.get("amount")),
+        months_covered: Number(fd.get("months_covered")) || 1,
+        date: fd.get("date"),
+        notes: fd.get("notes") || null,
+      };
+      const acc = fd.get("account_id");
+      if (acc) body.account_id = Number(acc);
+      payMsg.textContent = "guardando…";
+      const res = await fetch(`/api/installments/${planId}/payments`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (res.ok) window.location.reload();
+      else { payMsg.textContent = "no se pudo guardar"; payMsg.dataset.tone = "error"; }
+    });
+
+    // Borrar pago
+    document.querySelectorAll<HTMLButtonElement>(".del-pay-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("¿Borrar este pago? Se revertirá el movimiento bancario si lo tenía.")) return;
+        const id = btn.dataset.id;
+        const res = await fetch(`/api/installments/payments/${id}`, { method: "DELETE" });
+        if (res.ok) window.location.reload();
+      });
+    });
+
+    // Borrar plan completo
+    document.querySelectorAll<HTMLButtonElement>(".delete-plan-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest<HTMLElement>(".plan")!;
+        const concept = card.dataset.concept;
+        if (!confirm(`¿Eliminar el plan "${concept}" y todos sus pagos? Los movements vinculados NO se borran.`)) return;
+        const res = await fetch(`/api/installments/${card.dataset.id}`, { method: "DELETE" });
+        if (res.ok) window.location.reload();
+      });
+    });
+  </script>
+</Base>

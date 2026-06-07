@@ -54,6 +54,37 @@ export type Subscription = {
   notes: string | null;
 };
 
+export type InstallmentPlan = {
+  id: number;
+  concept: string;
+  creditor: string;
+  total_amount: number;
+  monthly_amount: number;
+  months_total: number;
+  start_date: string | null;
+  status: "active" | "paid" | "cancelled";
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+  // Campos calculados al vuelo:
+  paid_amount: number;
+  months_paid: number;
+  remaining_amount: number;
+  remaining_months: number;
+};
+
+export type InstallmentPayment = {
+  id: number;
+  plan_id: number;
+  date: string;
+  amount: number;
+  months_covered: number;
+  account_id: number | null;
+  movement_id: number | null;
+  notes: string | null;
+  created_at: number;
+};
+
 export type Goal = {
   id: number;
   name: string;
@@ -134,6 +165,51 @@ export async function listMovements(opts: {
   return res.results ?? [];
 }
 
+export async function listInstallmentPlans(activeOnly = false): Promise<InstallmentPlan[]> {
+  const sql = activeOnly
+    ? `SELECT id,concept,creditor,total_amount,monthly_amount,months_total,start_date,status,notes,created_at,updated_at
+         FROM installment_plans WHERE status='active' ORDER BY id ASC`
+    : `SELECT id,concept,creditor,total_amount,monthly_amount,months_total,start_date,status,notes,created_at,updated_at
+         FROM installment_plans ORDER BY status='paid', status='cancelled', id ASC`;
+  const plans = (await db().prepare(sql).all<Omit<InstallmentPlan, "paid_amount" | "months_paid" | "remaining_amount" | "remaining_months">>()).results ?? [];
+  if (plans.length === 0) return [];
+
+  // Agregar suma de pagos por plan en una sola query
+  const ids = plans.map(p => p.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const sums = (await db()
+    .prepare(`SELECT plan_id, COALESCE(SUM(amount),0) AS paid, COALESCE(SUM(months_covered),0) AS mpaid
+                FROM installment_payments WHERE plan_id IN (${placeholders}) GROUP BY plan_id`)
+    .bind(...ids)
+    .all<{ plan_id: number; paid: number; mpaid: number }>()
+  ).results ?? [];
+  const byPlan = new Map(sums.map(s => [s.plan_id, s]));
+
+  return plans.map(p => {
+    const s = byPlan.get(p.id);
+    const paid_amount = s?.paid ?? 0;
+    const months_paid = s?.mpaid ?? 0;
+    return {
+      ...p,
+      paid_amount,
+      months_paid,
+      remaining_amount: Math.max(0, p.total_amount - paid_amount),
+      remaining_months: Math.max(0, p.months_total - months_paid),
+    };
+  });
+}
+
+export async function listInstallmentPayments(planId: number): Promise<InstallmentPayment[]> {
+  const res = await db()
+    .prepare(
+      `SELECT id,plan_id,date,amount,months_covered,account_id,movement_id,notes,created_at
+         FROM installment_payments WHERE plan_id = ? ORDER BY date DESC, id DESC`
+    )
+    .bind(planId)
+    .all<InstallmentPayment>();
+  return res.results ?? [];
+}
+
 // Computa proximas fechas relevantes: cortes y vencimientos de TDC + cobros pendientes.
 export function upcomingDates(accounts: Account[], receivables: Receivable[], today = new Date()): Array<{
   date: string;
@@ -179,7 +255,7 @@ export function upcomingDates(accounts: Account[], receivables: Receivable[], to
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function summarize(accounts: Account[], receivables: Receivable[], subscriptions: Subscription[]) {
+export function summarize(accounts: Account[], receivables: Receivable[], subscriptions: Subscription[], installments: InstallmentPlan[] = []) {
   let cashTotal = 0;
   let debtTotal = 0;
   let creditAvailable = 0;
@@ -211,6 +287,22 @@ export function summarize(accounts: Account[], receivables: Receivable[], subscr
     }
   }
 
-  const netWorth = cashTotal - debtTotal;
-  return { cashTotal, debtTotal, creditAvailable, pipelineTotal, pipelineCount, subsMonthly, subsActive, netWorth };
+  let installmentsRemaining = 0;
+  let installmentsMonthly = 0;
+  let installmentsActive = 0;
+  for (const p of installments) {
+    if (p.status !== "active") continue;
+    installmentsRemaining += p.remaining_amount;
+    installmentsMonthly += p.monthly_amount;
+    installmentsActive++;
+  }
+
+  const netWorth = cashTotal - debtTotal - installmentsRemaining;
+  return {
+    cashTotal, debtTotal, creditAvailable,
+    pipelineTotal, pipelineCount,
+    subsMonthly, subsActive,
+    installmentsRemaining, installmentsMonthly, installmentsActive,
+    netWorth,
+  };
 }

@@ -1,15 +1,16 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { listAccounts, listReceivables, listSubscriptions, listGoals, upcomingDates, summarize } from "../../lib/finance";
+import { listAccounts, listReceivables, listSubscriptions, listGoals, listInstallmentPlans, upcomingDates, summarize } from "../../lib/finance";
 import { fmtMxn, fmtDate, relativeDays } from "../../lib/format";
 
-const [accounts, receivables, subscriptions, goals] = await Promise.all([
+const [accounts, receivables, subscriptions, goals, installments] = await Promise.all([
   listAccounts(false),
   listReceivables(),
   listSubscriptions(true),
   listGoals(),
+  listInstallmentPlans(true),
 ]);
-const totals = summarize(accounts, receivables, subscriptions);
+const totals = summarize(accounts, receivables, subscriptions, installments);
 const upcoming = upcomingDates(accounts, receivables).slice(0, 6);
 const pendingReceivables = receivables.filter(r => r.status === "pending" || r.status === "partial" || r.status === "late");
 ---
@@ -42,6 +43,11 @@ const pendingReceivables = receivables.filter(r => r.status === "pending" || r.s
         <p class="kpi__label">Suscripciones</p>
         <p class="kpi__value mono">{fmtMxn(totals.subsMonthly)}</p>
         <p class="kpi__sub muted">{totals.subsActive} activas / mes</p>
+      </div>
+      <div class="kpi">
+        <p class="kpi__label">Mensualidades</p>
+        <p class="kpi__value mono neg">{fmtMxn(totals.installmentsRemaining)}</p>
+        <p class="kpi__sub muted">{totals.installmentsActive} planes · {fmtMxn(totals.installmentsMonthly)}/mes</p>
       </div>
     </section>
 
@@ -121,6 +127,33 @@ const pendingReceivables = receivables.filter(r => r.status === "pending" || r.s
                 )}
               </li>
             ))}
+          </ul>
+        )}
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <h2>Mensualidades</h2>
+          <a href="/app/mensualidades" class="muted small">ver todo →</a>
+        </div>
+        {installments.length === 0 ? (
+          <p class="muted small">Sin planes activos.</p>
+        ) : (
+          <ul class="rows">
+            {installments.map(p => {
+              const pct = p.total_amount > 0 ? Math.round(100 * (p.paid_amount / p.total_amount)) : 0;
+              return (
+                <li class="row goal">
+                  <div class="goal__main">
+                    <p class="row__title">{p.concept} <span class="muted small">a {p.creditor}</span></p>
+                    <div class="goal__bar"><span style={`width:${Math.min(100, pct)}%`}></span></div>
+                    <p class="row__sub muted small">
+                      {p.months_paid}/{p.months_total} meses · resta {fmtMxn(p.remaining_amount)}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
