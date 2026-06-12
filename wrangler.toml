@@ -13,3 +13,6 @@ binding = "DB"
 database_name = "finanzas-sopadeletras"
 database_id = "90bb0f6b-7048-4e5f-9d39-1b3ae8f76a65"
 migrations_dir = "migrations"
+
+[ai]
+binding = "AI"

@@ -134,7 +134,7 @@ const KIND_LABEL: Record<string, string> = {
   </dialog>
 
   <style>
-    .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: var(--sp-6); }
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-6); flex-wrap: wrap; }
     .small { font-size: var(--fs-xs); }
     .right { text-align: right; }
 
@@ -145,8 +145,10 @@ const KIND_LABEL: Record<string, string> = {
       background: var(--bg-elev);
       border-radius: var(--radius-sm);
       font-size: var(--fs-sm);
+      max-width: 100%;
     }
-    .filters input { flex: 1; min-width: 180px; }
+    .filters select { flex: 1; min-width: 0; }
+    .filters input { flex: 2; min-width: 0; }
 
     .table { padding: 0; overflow: hidden; }
     .table__head, .trow {
@@ -185,12 +187,13 @@ const KIND_LABEL: Record<string, string> = {
 
     .dlg {
       border: none; padding: 0; border-radius: var(--radius);
-      max-width: 460px; width: 100%;
+      width: min(460px, 94vw);
       background: var(--bg-elev); color: var(--fg);
       box-shadow: 0 20px 60px rgba(0,0,0,0.25);
     }
     .dlg::backdrop { background: rgba(0,0,0,0.4); }
-    .dlg__form { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); }
+    .dlg__form { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+    @media (min-width: 500px) { .dlg__form { padding: var(--sp-6); } }
     .dlg__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-2); }
     .dlg__head h2 { margin: 0; font-size: var(--fs-lg); }
     .dlg__close { background: none; border: none; font-size: 28px; line-height: 1; color: var(--muted); padding: 0; }

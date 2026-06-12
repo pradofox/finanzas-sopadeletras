@@ -22,21 +22,38 @@ const pendingReceivables = receivables.filter(r => r.status === "pending" || r.s
       </div>
     </header>
 
+    <div class="nl-box">
+      <textarea id="nl-input" class="nl-input" placeholder="ej. &quot;gasté $4,500 en el dentista con la BBVA&quot;  ·  &quot;GIM llegó el cheque de $50k&quot;  ·  &quot;el saldo de BBVA es $8,200&quot;" rows="2"></textarea>
+      <button class="btn nl-btn" id="nl-send">Interpretar</button>
+    </div>
+
+    <div id="nl-preview" class="nl-preview" style="display:none">
+      <div class="nl-preview__understood" id="nl-understood"></div>
+      <ul class="nl-preview__ops" id="nl-ops"></ul>
+      <div class="nl-preview__actions">
+        <button class="btn btn--ghost" id="nl-cancel">cancelar</button>
+        <button class="btn" id="nl-confirm">confirmar cambios</button>
+      </div>
+      <p class="nl-preview__msg" id="nl-msg"></p>
+    </div>
+
     <section class="kpis">
       <div class="kpi">
         <p class="kpi__label">Efectivo disponible</p>
         <p class="kpi__value mono">{fmtMxn(totals.cashTotal)}</p>
-        <p class="kpi__sub muted">en cuentas de débito y efectivo</p>
+        <p class="kpi__sub muted">débito y efectivo</p>
       </div>
       <div class="kpi">
         <p class="kpi__label">Deuda TDC</p>
         <p class="kpi__value mono neg">{fmtMxn(totals.debtTotal)}</p>
-        <p class="kpi__sub muted">crédito disponible {fmtMxn(totals.creditAvailable)}</p>
+        <p class="kpi__sub muted">disponible {fmtMxn(totals.creditAvailable)}</p>
       </div>
-      <div class="kpi">
-        <p class="kpi__label">Pipeline</p>
-        <p class="kpi__value mono pos">{fmtMxn(totals.pipelineTotal)}</p>
-        <p class="kpi__sub muted">{totals.pipelineCount} cobros pendientes</p>
+      <div class="kpi kpi--pipeline">
+        <p class="kpi__label">Pipeline confirmado</p>
+        <p class="kpi__value mono pos">{fmtMxn(totals.pipelineConfirmed)}</p>
+        {totals.pipelineEstimated > 0 && (
+          <p class="kpi__sub warn">+ {fmtMxn(totals.pipelineEstimated)} estimado</p>
+        )}
       </div>
       <div class="kpi">
         <p class="kpi__label">Suscripciones</p>
@@ -82,11 +99,16 @@ const pendingReceivables = receivables.filter(r => r.status === "pending" || r.s
             {pendingReceivables.slice(0, 6).map(r => (
               <li class="row">
                 <div>
-                  <p class="row__title">{r.client}</p>
+                  <p class="row__title">
+                    <span class={`badge badge--${r.confidence}`}>
+                      {r.confidence === "confirmed" ? "✓" : r.confidence === "estimated" ? "~" : "?"}
+                    </span>
+                    {r.client}
+                  </p>
                   <p class="row__sub muted small">
                     {r.project ?? "—"}
                     {r.expected_date && <span> · {fmtDate(r.expected_date)}</span>}
-                    {!r.expected_date && <span> · fecha sin confirmar</span>}
+                    {!r.expected_date && <span> · sin fecha</span>}
                   </p>
                 </div>
                 <p class="row__amt mono pos">{fmtMxn(r.amount - r.paid_amount)}</p>
@@ -152,52 +174,87 @@ const pendingReceivables = receivables.filter(r => r.status === "pending" || r.s
   </main>
 
   <style>
-    .dashboard__head { margin-bottom: var(--sp-8); }
+    .dashboard__head { margin-bottom: var(--sp-6); }
     .dashboard__head .small { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em; }
     .small { font-size: var(--fs-xs); }
 
     .kpis {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(2, 1fr);
       gap: var(--sp-3);
       margin-bottom: var(--sp-6);
+    }
+    @media (min-width: 700px) {
+      .kpis { grid-template-columns: repeat(4, 1fr); }
     }
     .kpi {
       background: var(--bg-elev);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: var(--sp-5);
+      padding: var(--sp-3);
     }
+    @media (min-width: 600px) { .kpi { padding: var(--sp-5); } }
     .kpi__label {
       font-size: var(--fs-xs);
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin: 0 0 var(--sp-2);
+      letter-spacing: 0.06em;
+      margin: 0 0 var(--sp-1);
     }
-    .kpi__value { font-size: var(--fs-2xl); margin: 0 0 var(--sp-1); letter-spacing: -0.02em; }
-    .kpi__sub { font-size: var(--fs-xs); margin: 0; }
+    .kpi__value { font-size: clamp(1.1rem, 4vw, var(--fs-2xl)); margin: 0 0 2px; letter-spacing: -0.02em; line-height: 1.2; }
+    .kpi__sub { font-size: var(--fs-xs); margin: 0; color: var(--muted); }
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: 1fr;
       gap: var(--sp-4);
     }
-    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    @media (min-width: 760px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 
     .card__head a { text-decoration: none; }
     .card__head a:hover { color: var(--fg); }
 
+    /* Badges de confidence */
+    .badge { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 3px; padding: 1px 4px; margin-right: 4px; vertical-align: middle; }
+    .badge--confirmed { background: color-mix(in srgb, var(--positive) 15%, transparent); color: var(--positive); }
+    .badge--estimated  { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+    .badge--speculative { background: var(--bg-soft); color: var(--muted); }
+
+    /* NL box */
+    .nl-box { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-5); align-items: flex-start; }
+    .nl-input {
+      flex: 1; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm); resize: none; font-size: var(--fs-sm); line-height: 1.5;
+      color: var(--fg); outline: none;
+    }
+    .nl-input:focus { border-color: var(--fg); }
+    .nl-input::placeholder { color: var(--muted); }
+    .nl-btn { white-space: nowrap; align-self: flex-end; }
+    .nl-preview {
+      background: var(--bg-elev); border: 1px solid var(--line-strong);
+      border-radius: var(--radius); padding: var(--sp-4); margin-bottom: var(--sp-5);
+    }
+    .nl-preview__understood { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--sp-3); }
+    .nl-preview__ops { list-style: none; padding: 0; margin: 0 0 var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
+    .nl-preview__ops li { font-size: var(--fs-sm); background: var(--bg-soft); border-radius: var(--radius-sm); padding: 8px 12px; }
+    .nl-preview__actions { display: flex; gap: var(--sp-2); }
+    .nl-preview__msg { margin: var(--sp-2) 0 0; font-size: var(--fs-sm); min-height: 1.4em; }
+    .nl-preview__msg[data-tone="ok"] { color: var(--positive); }
+    .nl-preview__msg[data-tone="error"] { color: var(--negative); }
+
     .rows { list-style: none; margin: 0; padding: 0; }
     .row {
-      display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-2);
       padding: var(--sp-3) 0;
       border-top: 1px solid var(--line);
+      min-width: 0;
     }
     .row:first-child { border-top: none; padding-top: 0; }
-    .row__title { margin: 0; font-weight: 500; }
-    .row__sub { margin: 2px 0 0; }
-    .row__amt { margin: 0; font-size: var(--fs-md); white-space: nowrap; }
+    .row > div { min-width: 0; flex: 1; }
+    .row__title { margin: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row__sub { margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row__amt { margin: 0; font-size: var(--fs-sm); white-space: nowrap; flex-shrink: 0; }
+    @media (min-width: 500px) { .row__amt { font-size: var(--fs-md); } }
 
     .goal { display: block; }
     .goal__bar {
@@ -206,4 +263,129 @@ const pendingReceivables = receivables.filter(r => r.status === "pending" || r.s
     }
     .goal__bar span { display: block; height: 100%; background: var(--fg); }
   </style>
+
+  <script>
+    const input    = document.getElementById("nl-input")    as HTMLTextAreaElement;
+    const sendBtn  = document.getElementById("nl-send")     as HTMLButtonElement;
+    const preview  = document.getElementById("nl-preview")  as HTMLDivElement;
+    const understood = document.getElementById("nl-understood") as HTMLElement;
+    const opsList  = document.getElementById("nl-ops")      as HTMLUListElement;
+    const cancelBtn = document.getElementById("nl-cancel")  as HTMLButtonElement;
+    const confirmBtn = document.getElementById("nl-confirm") as HTMLButtonElement;
+    const msg      = document.getElementById("nl-msg")      as HTMLElement;
+
+    let pendingOps: any[] = [];
+
+    function opLabel(op: any): string {
+      switch (op.op) {
+        case "update_account_balance":
+          return `Actualizar saldo de "${op.account_name}" → $${op.new_balance.toLocaleString("es-MX")}`;
+        case "mark_receivable_paid":
+          return `Marcar cobrado: "${op.client}${op.project ? " · " + op.project : ""}" por $${op.paid_amount.toLocaleString("es-MX")}`;
+        case "add_receivable":
+          return `Agregar cobro pendiente: "${op.client}${op.project ? " · " + op.project : ""}" $${op.amount.toLocaleString("es-MX")} [${op.confidence}]`;
+        case "update_receivable":
+          return `Actualizar cobro #${op.receivable_id} "${op.client}": ${JSON.stringify(op.fields)}`;
+        case "delete_receivable":
+          return `Cancelar cobro: "${op.client}${op.project ? " · " + op.project : ""}"`;
+        case "add_movement":
+          return `Registrar ${op.kind} $${op.amount.toLocaleString("es-MX")} en "${op.account_name}"${op.description ? " — " + op.description : ""}`;
+        default:
+          return JSON.stringify(op);
+      }
+    }
+
+    // Enter para enviar (Shift+Enter para nueva línea)
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }
+    });
+
+    sendBtn.addEventListener("click", async () => {
+      const text = input.value.trim();
+      if (!text) return;
+      sendBtn.disabled = true;
+      sendBtn.textContent = "interpretando…";
+      preview.style.display = "none";
+      msg.textContent = "";
+
+      try {
+        const res = await fetch("/api/nl", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ message: text }),
+        });
+        const data = await res.json() as { ok: boolean; understood: string; ops: any[]; error?: string };
+
+        if (!res.ok || !data.ok) {
+          msg.textContent = data.error ?? "Error al interpretar.";
+          msg.dataset.tone = "error";
+          preview.style.display = "none";
+          return;
+        }
+
+        understood.textContent = data.understood || "Mensaje interpretado.";
+        pendingOps = data.ops ?? [];
+        opsList.innerHTML = "";
+
+        if (pendingOps.length === 0) {
+          const li = document.createElement("li");
+          li.textContent = "No detecté ninguna operación. Intenta ser más específico (cuenta, monto, cliente).";
+          li.style.color = "var(--muted)";
+          opsList.appendChild(li);
+          confirmBtn.style.display = "none";
+        } else {
+          pendingOps.forEach(op => {
+            const li = document.createElement("li");
+            li.textContent = opLabel(op);
+            opsList.appendChild(li);
+          });
+          confirmBtn.style.display = "";
+        }
+
+        preview.style.display = "";
+      } catch {
+        msg.textContent = "Error de red.";
+        msg.dataset.tone = "error";
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = "Interpretar";
+      }
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      preview.style.display = "none";
+      pendingOps = [];
+    });
+
+    confirmBtn.addEventListener("click", async () => {
+      if (!pendingOps.length) return;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "guardando…";
+      msg.textContent = "";
+
+      try {
+        const res = await fetch("/api/nl/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ops: pendingOps }),
+        });
+        const data = await res.json() as { ok: boolean; results?: any[] };
+        if (res.ok && data.ok) {
+          msg.textContent = "¡Listo! Recargando…";
+          msg.dataset.tone = "ok";
+          input.value = "";
+          setTimeout(() => window.location.reload(), 900);
+        } else {
+          msg.textContent = "Algo falló al guardar.";
+          msg.dataset.tone = "error";
+        }
+      } catch {
+        msg.textContent = "Error de red.";
+        msg.dataset.tone = "error";
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "confirmar cambios";
+      }
+    });
+  </script>
 </Base>

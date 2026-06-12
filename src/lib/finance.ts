@@ -38,6 +38,7 @@ export type Receivable = {
   amount: number;
   expected_date: string | null;
   status: "pending" | "partial" | "paid" | "late" | "cancelled";
+  confidence: "confirmed" | "estimated" | "speculative";
   paid_amount: number;
   paid_date: string | null;
   notes: string | null;
@@ -79,12 +80,12 @@ export async function listReceivables(status?: Receivable["status"]): Promise<Re
   const stmt = status
     ? db()
         .prepare(
-          `SELECT id,client,project,amount,expected_date,status,paid_amount,paid_date,notes
+          `SELECT id,client,project,amount,expected_date,status,confidence,paid_amount,paid_date,notes
              FROM receivables WHERE status=? ORDER BY expected_date IS NULL, expected_date ASC, id ASC`
         )
         .bind(status)
     : db().prepare(
-        `SELECT id,client,project,amount,expected_date,status,paid_amount,paid_date,notes
+        `SELECT id,client,project,amount,expected_date,status,confidence,paid_amount,paid_date,notes
            FROM receivables ORDER BY status='paid', expected_date IS NULL, expected_date ASC, id ASC`
       );
   const res = await stmt.all<Receivable>();
@@ -194,11 +195,18 @@ export function summarize(accounts: Account[], receivables: Receivable[], subscr
   }
 
   let pipelineTotal = 0;
+  let pipelineConfirmed = 0;
+  let pipelineEstimated = 0;
+  let pipelineSpeculative = 0;
   let pipelineCount = 0;
   for (const r of receivables) {
     if (r.status === "pending" || r.status === "partial" || r.status === "late") {
-      pipelineTotal += r.amount - r.paid_amount;
+      const net = r.amount - r.paid_amount;
+      pipelineTotal += net;
       pipelineCount++;
+      if (r.confidence === "confirmed") pipelineConfirmed += net;
+      else if (r.confidence === "estimated") pipelineEstimated += net;
+      else pipelineSpeculative += net;
     }
   }
 
@@ -212,5 +220,5 @@ export function summarize(accounts: Account[], receivables: Receivable[], subscr
   }
 
   const netWorth = cashTotal - debtTotal;
-  return { cashTotal, debtTotal, creditAvailable, pipelineTotal, pipelineCount, subsMonthly, subsActive, netWorth };
+  return { cashTotal, debtTotal, creditAvailable, pipelineTotal, pipelineConfirmed, pipelineEstimated, pipelineSpeculative, pipelineCount, subsMonthly, subsActive, netWorth };
 }

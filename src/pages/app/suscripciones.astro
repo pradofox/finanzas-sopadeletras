@@ -84,18 +84,20 @@ const accountById = new Map(accounts.map(a => [a.id, a]));
   </dialog>
 
   <style>
-    .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: var(--sp-6); }
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-6); flex-wrap: wrap; }
     .small { font-size: var(--fs-xs); }
     .subs { padding: 0; }
-    .subs .row { padding: var(--sp-3) var(--sp-5); }
-    .subs__right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .subs .row { padding: var(--sp-3) var(--sp-4); flex-wrap: wrap; }
+    @media (min-width: 500px) { .subs .row { padding: var(--sp-3) var(--sp-5); flex-wrap: nowrap; } }
+    .subs__right { display: flex; flex-direction: row; align-items: center; gap: var(--sp-3); flex-shrink: 0; }
     .btn--sm { padding: 6px 12px; font-size: var(--fs-sm); }
     .closed { margin-top: var(--sp-6); }
     .closed summary { cursor: pointer; color: var(--muted); padding: var(--sp-3) 0; }
 
-    .dlg { border: none; padding: 0; border-radius: var(--radius); max-width: 460px; width: 100%; background: var(--bg-elev); color: var(--fg); box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+    .dlg { border: none; padding: 0; border-radius: var(--radius); width: min(460px, 94vw); background: var(--bg-elev); color: var(--fg); box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
     .dlg::backdrop { background: rgba(0,0,0,0.4); }
-    .dlg__form { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); }
+    .dlg__form { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+    @media (min-width: 500px) { .dlg__form { padding: var(--sp-6); } }
     .dlg__head { display: flex; justify-content: space-between; align-items: center; }
     .dlg__head h2 { margin: 0; font-size: var(--fs-lg); }
     .dlg__close { background: none; border: none; font-size: 28px; color: var(--muted); padding: 0; }

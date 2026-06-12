@@ -29,6 +29,19 @@ const nextPath = Astro.url.searchParams.get("next") || "/app";
         <p class="login__msg" id="code-msg" role="status" aria-live="polite"></p>
         <button type="button" class="login__back" id="back-to-email">← cambiar correo</button>
       </form>
+
+      <details class="login__alt">
+        <summary>entrar con contraseña</summary>
+        <form id="step-pass" class="login__form login__form--alt" novalidate>
+          <label class="login__label" for="pass-email">correo</label>
+          <input id="pass-email" name="email" type="email" required autocomplete="email" inputmode="email" />
+          <label class="login__label" for="pass-pw">contraseña</label>
+          <input id="pass-pw" name="password" type="password" required autocomplete="current-password" />
+          <input type="hidden" id="pass-next" value={nextPath} />
+          <button type="submit" class="btn">entrar</button>
+          <p class="login__msg" id="pass-msg" role="status" aria-live="polite"></p>
+        </form>
+      </details>
     </div>
   </main>
 
@@ -43,8 +56,9 @@ const nextPath = Astro.url.searchParams.get("next") || "/app";
       background: var(--bg-elev);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: var(--sp-10) var(--sp-8);
+      padding: var(--sp-6) var(--sp-4);
     }
+    @media (min-width: 480px) { .login__panel { padding: var(--sp-10) var(--sp-8); } }
     .login__eyebrow {
       margin: 0 0 var(--sp-4);
       font-size: var(--fs-xs);
@@ -83,6 +97,14 @@ const nextPath = Astro.url.searchParams.get("next") || "/app";
       color: var(--muted); font-size: var(--fs-sm); align-self: flex-start; padding: 0;
     }
     .login__back:hover { color: var(--fg); }
+    .login__alt { margin-top: var(--sp-6); border-top: 1px solid var(--line); padding-top: var(--sp-4); }
+    .login__alt summary {
+      cursor: pointer; color: var(--muted); font-size: var(--fs-sm);
+      list-style: none; padding: 4px 0;
+    }
+    .login__alt summary::-webkit-details-marker { display: none; }
+    .login__alt[open] summary { color: var(--fg); margin-bottom: var(--sp-3); }
+    .login__form--alt { margin-top: var(--sp-2); }
   </style>
 
   <script>
@@ -182,6 +204,45 @@ const nextPath = Astro.url.searchParams.get("next") || "/app";
       const v = codeInput.value.replace(/\D/g, "").slice(0, 6);
       codeInput.value = v;
       if (v.length === 6) stepCode.requestSubmit();
+    });
+
+    // Login por contrasena (fallback mientras Resend no esta listo)
+    const stepPass = document.getElementById("step-pass") as HTMLFormElement;
+    const passEmail = document.getElementById("pass-email") as HTMLInputElement;
+    const passPw = document.getElementById("pass-pw") as HTMLInputElement;
+    const passNext = document.getElementById("pass-next") as HTMLInputElement;
+    const passMsg = document.getElementById("pass-msg") as HTMLElement;
+
+    stepPass.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = stepPass.querySelector('button[type="submit"]') as HTMLButtonElement;
+      const email = passEmail.value.trim().toLowerCase();
+      const password = passPw.value;
+      if (!email.includes("@") || !password) {
+        setMsg(passMsg, "Faltan campos.", "error");
+        return;
+      }
+      btn.disabled = true;
+      setMsg(passMsg, "verificando…", "info");
+      try {
+        const res = await fetch("/api/auth/password", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string };
+        if (res.ok && data.ok) {
+          setMsg(passMsg, "todo bien, entrando…", "ok");
+          window.location.assign(passNext.value || data.redirect || "/app");
+          return;
+        }
+        const msg = data.error === "password_login_disabled"
+          ? "Falta configurar LOGIN_PASSWORD en el server."
+          : "Correo o contraseña incorrectos.";
+        setMsg(passMsg, msg, "error");
+      } catch {
+        setMsg(passMsg, "Error de red. Intenta otra vez.", "error");
+      } finally { btn.disabled = false; }
     });
   </script>
 </Base>
